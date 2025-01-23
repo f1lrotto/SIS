@@ -15,8 +15,11 @@ const client = new Client({
 const JOIN_PROBABILITY = 0.8; // 80% chance to join
 const MIN_DELAY_MS = 60000; // 1 minute
 const MAX_DELAY_MS = 300000; // 5 minutes
+const MIN_DISCONNECT_MS = 3 * 60 * 60 * 1000; // 3 hours
+const MAX_DISCONNECT_MS = 8 * 60 * 60 * 1000; // 8 hours
 let currentVoiceConnection = null;
 let pendingJoin = null;
+let disconnectTimeout = null;
 
 function log(message) {
     const timestamp = new Date().toISOString();
@@ -26,6 +29,11 @@ function log(message) {
 // Function to get random delay between MIN_DELAY_MS and MAX_DELAY_MS
 function getRandomDelay() {
     return Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS + 1) + MIN_DELAY_MS);
+}
+
+// Function to get random disconnect delay between MIN_DISCONNECT_MS and MAX_DISCONNECT_MS
+function getRandomDisconnectDelay() {
+    return Math.floor(Math.random() * (MAX_DISCONNECT_MS - MIN_DISCONNECT_MS + 1) + MIN_DISCONNECT_MS);
 }
 
 client.once('ready', () => {
@@ -43,11 +51,34 @@ async function joinChannel(guild, channel) {
         });
         currentVoiceConnection = connection;
         log(`Successfully joined voice channel: ${channel.name}`);
+        
+        // Schedule random disconnection when joining
+        scheduleRandomDisconnect(guild);
     } catch (error) {
         log(`Error joining voice channel: ${error.message}`);
         console.error(error);
     }
     pendingJoin = null;
+}
+
+// Function to schedule random disconnection
+function scheduleRandomDisconnect(guild) {
+    if (disconnectTimeout) {
+        clearTimeout(disconnectTimeout);
+    }
+    
+    const delay = getRandomDisconnectDelay();
+    const disconnectTime = new Date(Date.now() + delay);
+    
+    log(`Scheduled random disconnection in ${Math.floor(delay/1000/60/60)} hours (at ${disconnectTime.toLocaleTimeString()})`);
+    
+    disconnectTimeout = setTimeout(() => {
+        if (currentVoiceConnection) {
+            log('Executing scheduled random disconnection');
+            currentVoiceConnection.destroy();
+            currentVoiceConnection = null;
+        }
+    }, delay);
 }
 
 // Function to check voice channels and potentially join one
@@ -104,6 +135,10 @@ function checkAndLeaveVoiceChannel(guild) {
     if (!connection) {
         log('Voice connection lost, resetting state');
         currentVoiceConnection = null;
+        if (disconnectTimeout) {
+            clearTimeout(disconnectTimeout);
+            disconnectTimeout = null;
+        }
         return;
     }
 
@@ -112,6 +147,10 @@ function checkAndLeaveVoiceChannel(guild) {
         log('Channel no longer exists, leaving');
         connection.destroy();
         currentVoiceConnection = null;
+        if (disconnectTimeout) {
+            clearTimeout(disconnectTimeout);
+            disconnectTimeout = null;
+        }
         return;
     }
 
@@ -123,6 +162,12 @@ function checkAndLeaveVoiceChannel(guild) {
         log(`Leaving channel ${channel.name} as there are no real users left`);
         connection.destroy();
         currentVoiceConnection = null;
+
+        // Clear disconnect timeout when leaving due to empty room
+        if (disconnectTimeout) {
+            clearTimeout(disconnectTimeout);
+            disconnectTimeout = null;
+        }
 
         // If we have a pending join, cancel it
         if (pendingJoin) {
