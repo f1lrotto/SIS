@@ -69,12 +69,15 @@ function scheduleRandomDisconnect(guild) {
     
     const delay = getRandomDisconnectDelay();
     const disconnectTime = new Date(Date.now() + delay);
+    const hours = Math.floor(delay/1000/60/60);
+    const minutes = Math.floor((delay/1000/60) % 60);
     
-    log(`Scheduled random disconnection in ${Math.floor(delay/1000/60/60)} hours (at ${disconnectTime.toLocaleTimeString()})`);
+    log(`Scheduled random disconnection in ${hours} hours and ${minutes} minutes (at ${disconnectTime.toLocaleTimeString()})`);
     
     disconnectTimeout = setTimeout(() => {
         if (currentVoiceConnection) {
-            log('Executing scheduled random disconnection');
+            const channel = guild.channels.cache.get(currentVoiceConnection.joinConfig.channelId);
+            log(`Executing scheduled random disconnection from channel: ${channel ? channel.name : 'Unknown'}`);
             currentVoiceConnection.destroy();
             currentVoiceConnection = null;
         }
@@ -133,7 +136,7 @@ function checkAndLeaveVoiceChannel(guild) {
 
     const connection = getVoiceConnection(guild.id);
     if (!connection) {
-        log('Voice connection lost, resetting state');
+        log('Voice connection lost, resetting state and clearing scheduled disconnection');
         currentVoiceConnection = null;
         if (disconnectTimeout) {
             clearTimeout(disconnectTimeout);
@@ -144,7 +147,7 @@ function checkAndLeaveVoiceChannel(guild) {
 
     const channel = guild.channels.cache.get(connection.joinConfig.channelId);
     if (!channel) {
-        log('Channel no longer exists, leaving');
+        log('Channel no longer exists, leaving and clearing scheduled disconnection');
         connection.destroy();
         currentVoiceConnection = null;
         if (disconnectTimeout) {
@@ -159,7 +162,7 @@ function checkAndLeaveVoiceChannel(guild) {
     log(`Current channel (${channel.name}) has ${realMemberCount} real users`);
 
     if (realMemberCount === 0) {
-        log(`Leaving channel ${channel.name} as there are no real users left`);
+        log(`Leaving channel ${channel.name} as there are no real users left. Clearing scheduled disconnection.`);
         connection.destroy();
         currentVoiceConnection = null;
 
